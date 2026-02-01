@@ -13,11 +13,11 @@
 	let slitMarkers: THREE.Mesh[] = [];
 
 	// Simulation parameters
-	let slitWidth = 0.8;
-	let slitSpacing = 2.5;
+	const slitWidth = 1.0;  // Fixed for simplicity
+	const slitSpacing = 2.8; // Fixed for simplicity
 	let particleType: 'electron' | 'photon' | 'buckyball' = 'electron';
 	let detectorOn = false;
-	let particleRate = 15;
+	let particleRate = 10;
 	let isRunning = false;
 	let hitCount = 0;
 
@@ -67,14 +67,8 @@
 	function updateSimulationParams() {
 		if (!particleSystem) return;
 
-		particleSystem.setSlitWidth(slitWidth);
-		particleSystem.setSlitSpacing(slitSpacing);
 		particleSystem.setParticleType(particleType);
 		particleSystem.setEmissionRate(particleRate);
-
-		if (slitMarkers.length > 0) {
-			updateSlitPositions(slitMarkers, slitSpacing, slitWidth);
-		}
 	}
 
 	function handleReset() {
@@ -145,8 +139,6 @@
 	</div>
 
 	<Controls
-		bind:slitWidth
-		bind:slitSpacing
 		bind:particleType
 		bind:detectorOn
 		bind:particleRate

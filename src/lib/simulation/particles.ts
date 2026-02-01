@@ -8,6 +8,7 @@ interface Particle {
 	velocity: THREE.Vector3;
 	age: number;
 	finalY: number | null;
+	whichSlit: number | null; // 1 for top, -1 for bottom, null for not yet determined
 }
 
 export class ParticleSystem {
@@ -16,19 +17,56 @@ export class ParticleSystem {
 	private hits: THREE.Points | null = null;
 	private hitPositions: number[] = [];
 	private hitColors: number[] = [];
-	private slitWidth = 0.5;
-	private slitSpacing = 2.0;
-	private wavelength = 0.3;
+	private slitWidth = 1.0;
+	private slitSpacing = 2.8;
+	private wavelength = 0.6;
 	private particleType: 'electron' | 'photon' | 'buckyball' = 'electron';
 	private emissionRate = 10;
 	private emissionCounter = 0;
 	private maxParticles = 3000;
 	private screenDistance = 8;
 	private maxActiveParticles = 50;
+	private slitIndicators: THREE.Mesh[] = []; // Visual feedback for which slit
 
 	constructor(scene: THREE.Scene) {
 		this.scene = scene;
 		this.createHitDetector();
+		this.createSlitIndicators();
+	}
+
+	private createSlitIndicators() {
+		// Create visual indicators at each slit position
+		const indicatorMaterial = new THREE.MeshBasicMaterial({
+			color: 0xffff00,
+			transparent: true,
+			opacity: 0
+		});
+
+		// Top slit indicator
+		const topIndicator = new THREE.Mesh(
+			new THREE.SphereGeometry(0.3, 16, 16),
+			indicatorMaterial.clone()
+		);
+		topIndicator.position.set(0, this.slitSpacing / 2, 0);
+		this.scene.add(topIndicator);
+		this.slitIndicators.push(topIndicator);
+
+		// Bottom slit indicator
+		const bottomIndicator = new THREE.Mesh(
+			new THREE.SphereGeometry(0.3, 16, 16),
+			indicatorMaterial.clone()
+		);
+		bottomIndicator.position.set(0, -this.slitSpacing / 2, 0);
+		this.scene.add(bottomIndicator);
+		this.slitIndicators.push(bottomIndicator);
+	}
+
+	private flashSlit(slitIndex: number) {
+		// Flash the slit indicator when a particle passes through
+		if (this.slitIndicators[slitIndex]) {
+			const material = this.slitIndicators[slitIndex].material as THREE.MeshBasicMaterial;
+			material.opacity = 0.8;
+		}
 	}
 
 	private createHitDetector() {
@@ -50,16 +88,6 @@ export class ParticleSystem {
 
 		this.hits = new THREE.Points(geometry, material);
 		this.scene.add(this.hits);
-	}
-
-	setSlitWidth(width: number) {
-		this.slitWidth = width;
-		console.log('Slit width updated to:', width);
-	}
-
-	setSlitSpacing(spacing: number) {
-		this.slitSpacing = spacing;
-		console.log('Slit spacing updated to:', spacing);
 	}
 
 	setParticleType(type: 'electron' | 'photon' | 'buckyball') {
@@ -138,11 +166,18 @@ export class ParticleSystem {
 			trailPositions: [],
 			velocity: new THREE.Vector3(props.speed, 0, 0),
 			age: 0,
-			finalY: null
+			finalY: null,
+			whichSlit: null
 		};
 	}
 
 	update(detectorOn: boolean) {
+		// Fade slit indicators
+		this.slitIndicators.forEach(indicator => {
+			const material = indicator.material as THREE.MeshBasicMaterial;
+			material.opacity *= 0.92; // Fade out
+		});
+
 		// Emit new particles
 		this.emissionCounter += this.emissionRate / 60;
 
@@ -167,15 +202,27 @@ export class ParticleSystem {
 				const bottomSlitMax = -halfSpacing + halfWidth;
 
 				const y = particle.mesh.position.y;
-				const passesThrough = (y >= topSlitMin && y <= topSlitMax) ||
-				                     (y >= bottomSlitMin && y <= bottomSlitMax);
 
-				if (!passesThrough) {
+				// Determine which slit (if any)
+				let whichSlit: number | null = null;
+				if (y >= topSlitMin && y <= topSlitMax) {
+					whichSlit = 0; // Top slit
+				} else if (y >= bottomSlitMin && y <= bottomSlitMax) {
+					whichSlit = 1; // Bottom slit
+				}
+
+				if (whichSlit === null) {
 					// Hit the barrier, remove particle
 					this.scene.remove(particle.mesh);
 					if (particle.trail) this.scene.remove(particle.trail);
 					this.particles.splice(i, 1);
 					continue;
+				}
+
+				// Store which slit and flash it if detector is on
+				particle.whichSlit = whichSlit;
+				if (detectorOn) {
+					this.flashSlit(whichSlit);
 				}
 
 				// Passed through slit - determine final position
