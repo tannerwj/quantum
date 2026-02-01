@@ -15,60 +15,68 @@
 	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
 		<!-- Slit Width -->
 		<div>
-			<label class="block text-sm font-medium mb-2">
-				Slit Width: <span class="text-quantum-cyan">{slitWidth.toFixed(2)}</span>
+			<label for="slit-width" class="block text-sm font-medium mb-2">
+				Slit Width: <span class="text-quantum-cyan">{slitWidth.toFixed(1)}</span>
 			</label>
 			<input
+				id="slit-width"
 				type="range"
-				min="0.1"
-				max="2.0"
+				min="0.3"
+				max="2.5"
 				step="0.1"
 				bind:value={slitWidth}
 				class="w-full accent-quantum-cyan"
 			/>
+			<p class="text-xs text-gray-500 mt-1">Wider = broader bands on screen</p>
 		</div>
 
 		<!-- Slit Spacing -->
 		<div>
-			<label class="block text-sm font-medium mb-2">
-				Slit Spacing: <span class="text-quantum-cyan">{slitSpacing.toFixed(2)}</span>
+			<label for="slit-spacing" class="block text-sm font-medium mb-2">
+				Slit Spacing: <span class="text-quantum-cyan">{slitSpacing.toFixed(1)}</span>
 			</label>
 			<input
+				id="slit-spacing"
 				type="range"
 				min="1.0"
 				max="5.0"
-				step="0.1"
+				step="0.2"
 				bind:value={slitSpacing}
 				class="w-full accent-quantum-cyan"
 			/>
+			<p class="text-xs text-gray-500 mt-1">Further apart = bands move outward</p>
 		</div>
 
 		<!-- Particle Rate -->
 		<div>
-			<label class="block text-sm font-medium mb-2">
-				Particle Rate: <span class="text-quantum-cyan">{particleRate}</span>
+			<label for="particle-rate" class="block text-sm font-medium mb-2">
+				Particle Rate: <span class="text-quantum-cyan">{particleRate}/s</span>
 			</label>
 			<input
+				id="particle-rate"
 				type="range"
-				min="1"
-				max="50"
-				step="1"
+				min="5"
+				max="100"
+				step="5"
 				bind:value={particleRate}
 				class="w-full accent-quantum-cyan"
 			/>
+			<p class="text-xs text-gray-500 mt-1">How fast particles are emitted</p>
 		</div>
 
 		<!-- Particle Type -->
 		<div>
-			<label class="block text-sm font-medium mb-2">Particle Type</label>
+			<label for="particle-type" class="block text-sm font-medium mb-2">Particle Type</label>
 			<select
+				id="particle-type"
 				bind:value={particleType}
 				class="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-md focus:outline-none focus:ring-2 focus:ring-quantum-cyan"
 			>
-				<option value="electron">Electron</option>
-				<option value="photon">Photon</option>
-				<option value="buckyball">Buckyball</option>
+				<option value="photon">Photon (wide fringes)</option>
+				<option value="electron">Electron (medium)</option>
+				<option value="buckyball">Buckyball (tight fringes)</option>
 			</select>
+			<p class="text-xs text-gray-500 mt-1">Different wavelengths = different patterns</p>
 		</div>
 
 		<!-- Detector -->
@@ -80,9 +88,11 @@
 					class="w-5 h-5 accent-quantum-cyan"
 				/>
 				<span class="font-medium">
-					Detector {detectorOn ? 'ON' : 'OFF'}
+					<span class={detectorOn ? 'text-orange-400' : 'text-cyan-400'}>
+						Detector {detectorOn ? 'ON' : 'OFF'}
+					</span>
 					<span class="block text-xs text-gray-400">
-						{detectorOn ? 'Measuring which-path' : 'No measurement'}
+						{detectorOn ? '2 bands (classical)' : 'Many bands (quantum)'}
 					</span>
 				</span>
 			</label>
