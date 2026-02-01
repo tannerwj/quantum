@@ -5,6 +5,10 @@
 	export let detectorOn: boolean;
 	export let particleRate: number;
 	export let isRunning: boolean;
+	export let showWaves: boolean = false;
+	export let showExpectedPattern: boolean = false;
+	export let showHistogram: boolean = false;
+	export let isFastForwarding: boolean = false;
 
 	const dispatch = createEventDispatcher();
 </script>
@@ -63,6 +67,45 @@
 		</div>
 	</div>
 
+	<!-- Visualization Toggles -->
+	<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6 pt-6 border-t border-gray-700">
+		<label class="flex items-center space-x-3 cursor-pointer">
+			<input
+				type="checkbox"
+				bind:checked={showWaves}
+				class="w-5 h-5 accent-quantum-cyan"
+			/>
+			<span class="text-sm">
+				<span class="font-medium">Show Waves</span>
+				<span class="block text-xs text-gray-400">Wave rings from slits</span>
+			</span>
+		</label>
+
+		<label class="flex items-center space-x-3 cursor-pointer">
+			<input
+				type="checkbox"
+				bind:checked={showExpectedPattern}
+				class="w-5 h-5 accent-quantum-cyan"
+			/>
+			<span class="text-sm">
+				<span class="font-medium">Show Expected Pattern</span>
+				<span class="block text-xs text-gray-400">Probability curve</span>
+			</span>
+		</label>
+
+		<label class="flex items-center space-x-3 cursor-pointer">
+			<input
+				type="checkbox"
+				bind:checked={showHistogram}
+				class="w-5 h-5 accent-quantum-cyan"
+			/>
+			<span class="text-sm">
+				<span class="font-medium">Show Histogram</span>
+				<span class="block text-xs text-gray-400">Hit distribution</span>
+			</span>
+		</label>
+	</div>
+
 	<!-- Control Buttons -->
 	<div class="flex gap-3 mt-6">
 		<button
@@ -70,6 +113,15 @@
 			class="flex-1 px-6 py-3 bg-quantum-cyan text-black font-semibold rounded-md hover:bg-quantum-cyan/80 transition-colors text-lg"
 		>
 			{isRunning ? 'Pause' : 'Start'}
+		</button>
+		<button
+			on:click={() => dispatch('fastforward')}
+			disabled={isFastForwarding}
+			class="px-6 py-3 font-semibold rounded-md transition-colors {isFastForwarding
+				? 'bg-yellow-600 text-black animate-pulse'
+				: 'bg-yellow-500 text-black hover:bg-yellow-400'}"
+		>
+			{isFastForwarding ? 'Fast Forwarding...' : 'Fast Forward'}
 		</button>
 		<button
 			on:click={() => dispatch('reset')}

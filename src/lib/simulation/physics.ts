@@ -63,13 +63,13 @@ export function getDoubleSilTProbability(
 	detectorOn: boolean
 ): number {
 	if (detectorOn) {
-		// With measurement: TWO DISTINCT BANDS (no interference!)
-		// Particles land near the two slit positions
+		// With measurement: TWO VERY NARROW BANDS (no interference!)
+		// Particles land in tight clusters at the two slit positions
 		const slit1Center = slitSpacing / 2;
 		const slit2Center = -slitSpacing / 2;
 
-		// Gaussian spread around each slit (narrow bands)
-		const spreadWidth = slitWidth * 0.8;
+		// Very narrow gaussian spread for obvious two-band pattern
+		const spreadWidth = slitWidth * 0.4; // Much tighter!
 		const gauss1 = Math.exp(-((y - slit1Center) ** 2) / (2 * spreadWidth ** 2));
 		const gauss2 = Math.exp(-((y - slit2Center) ** 2) / (2 * spreadWidth ** 2));
 
@@ -118,8 +118,8 @@ export function samplePosition(
 		const whichSlit = Math.random() < 0.5 ? 1 : -1;
 		const slitCenter = (slitSpacing / 2) * whichSlit;
 
-		// Small gaussian spread around the chosen slit
-		const spreadWidth = slitWidth * 0.8;
+		// Very tight spread for obvious two-band clustering
+		const spreadWidth = slitWidth * 0.35;
 		const offset = randomGaussian() * spreadWidth;
 
 		return slitCenter + offset;

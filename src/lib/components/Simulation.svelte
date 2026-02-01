@@ -2,15 +2,21 @@
 	import { onMount } from 'svelte';
 	import Controls from './Controls.svelte';
 	import * as THREE from 'three';
-	import { initScene, updateSlitPositions } from '$lib/simulation/scene';
+	import { initScene, updateDetectorVisibility } from '$lib/simulation/scene';
 	import { ParticleSystem } from '$lib/simulation/particles';
+	import { WaveRings } from '$lib/simulation/waves';
+	import { ProbabilityPreview } from '$lib/simulation/probability-preview';
+	import { Histogram } from '$lib/simulation/histogram';
 
 	let canvas: HTMLCanvasElement;
 	let scene: THREE.Scene;
 	let camera: THREE.PerspectiveCamera;
 	let renderer: THREE.WebGLRenderer;
 	let particleSystem: ParticleSystem;
-	let slitMarkers: THREE.Mesh[] = [];
+	let detectorCamera: THREE.Group;
+	let waveRings: WaveRings;
+	let probabilityPreview: ProbabilityPreview;
+	let histogram: Histogram;
 
 	// Simulation parameters
 	const slitWidth = 1.0;  // Fixed for simplicity
@@ -21,24 +27,62 @@
 	let isRunning = false;
 	let hitCount = 0;
 
+	// New visualization toggles
+	let showWaves = false;
+	let showExpectedPattern = false;
+	let showHistogram = false;
+	let isFastForwarding = false;
+	let fastForwardEndTime = 0;
+	let savedEmissionRate = 10;
+
 	onMount(() => {
 		const result = initScene(canvas);
 		scene = result.scene;
 		camera = result.camera;
 		renderer = result.renderer;
-		slitMarkers = result.slitMarkers;
+		detectorCamera = result.detectorCamera;
 
 		particleSystem = new ParticleSystem(scene);
-		updateSimulationParams();
+		particleSystem.setParticleType(particleType);
+		particleSystem.setEmissionRate(particleRate);
+
+		// Initialize new visualization systems
+		waveRings = new WaveRings(scene);
+		waveRings.setWavelength(particleType);
+
+		probabilityPreview = new ProbabilityPreview(scene);
+		probabilityPreview.setWavelength(particleType);
+		probabilityPreview.setDetectorState(detectorOn);
+
+		histogram = new Histogram(scene);
+
+		// Register histogram to receive hit notifications
+		particleSystem.onHit((y: number) => {
+			histogram.addHit(y);
+		});
+
+		// Set initial detector visibility
+		updateDetectorVisibility(detectorCamera, detectorOn);
 
 		// Animation loop
 		let animationId: number;
 		const animate = () => {
 			animationId = requestAnimationFrame(animate);
 
-			if (isRunning) {
+			// Check if fast-forward should end
+			if (isFastForwarding && performance.now() > fastForwardEndTime) {
+				isFastForwarding = false;
+				particleSystem.setEmissionRate(savedEmissionRate);
+			}
+
+			if (isRunning || isFastForwarding) {
 				particleSystem.update(detectorOn);
 				hitCount = particleSystem.getHitCount();
+
+				// Update wave rings if visible
+				if (showWaves) {
+					waveRings.update();
+				}
 			}
 
 			renderer.render(scene, camera);
@@ -60,29 +104,70 @@
 		return () => {
 			cancelAnimationFrame(animationId);
 			window.removeEventListener('resize', handleResize);
+			waveRings?.dispose();
+			probabilityPreview?.dispose();
+			histogram?.dispose();
 			renderer.dispose();
 		};
 	});
 
-	function updateSimulationParams() {
-		if (!particleSystem) return;
-
-		particleSystem.setParticleType(particleType);
-		particleSystem.setEmissionRate(particleRate);
-	}
-
 	function handleReset() {
 		particleSystem?.reset();
+		histogram?.reset();
 		hitCount = 0;
 		isRunning = false;
+		isFastForwarding = false;
 	}
 
 	function handleStart() {
 		isRunning = !isRunning;
 	}
 
+	function handleFastForward() {
+		if (isFastForwarding) return;
+
+		// Save current rate and set to high speed
+		savedEmissionRate = particleRate;
+		particleSystem.setEmissionRate(150); // 150 particles per second
+
+		// Start the simulation if not running
+		isRunning = true;
+		isFastForwarding = true;
+
+		// Set end time (3 seconds from now)
+		fastForwardEndTime = performance.now() + 3000;
+	}
+
+	// Reactive: update when any parameter changes
 	$: if (particleSystem) {
-		updateSimulationParams();
+		particleSystem.setParticleType(particleType);
+		if (!isFastForwarding) {
+			particleSystem.setEmissionRate(particleRate);
+		}
+	}
+
+	// Update detector camera visibility
+	$: if (detectorCamera) {
+		updateDetectorVisibility(detectorCamera, detectorOn);
+	}
+
+	// Update wave rings visibility and settings
+	$: if (waveRings) {
+		waveRings.setVisible(showWaves);
+		waveRings.setWavelength(particleType);
+		waveRings.setEmissionRate(particleRate);
+	}
+
+	// Update probability preview visibility and settings
+	$: if (probabilityPreview) {
+		probabilityPreview.setVisible(showExpectedPattern);
+		probabilityPreview.setWavelength(particleType);
+		probabilityPreview.setDetectorState(detectorOn);
+	}
+
+	// Update histogram visibility
+	$: if (histogram) {
+		histogram.setVisible(showHistogram);
 	}
 </script>
 
@@ -117,21 +202,21 @@
 		</div>
 
 		<!-- Pattern indicator -->
-		{#if hitCount > 50}
-			<div class="absolute bottom-4 left-4 bg-black/70 backdrop-blur-sm p-4 rounded-lg max-w-sm border-2 {detectorOn ? 'border-orange-500' : 'border-cyan-500'}">
+		{#if hitCount > 30}
+			<div class="absolute bottom-4 left-4 bg-black/90 backdrop-blur-sm p-4 rounded-lg max-w-md border-4 {detectorOn ? 'border-orange-500 shadow-orange-500/50' : 'border-cyan-500 shadow-cyan-500/50'} shadow-xl">
 				<div class="text-sm">
 					{#if detectorOn}
-						<div class="flex items-center gap-2 mb-1">
-							<div class="w-4 h-4 rounded-full bg-orange-500"></div>
-							<span class="text-orange-400 font-bold">DETECTOR ON</span>
+						<div class="flex items-center gap-2 mb-2">
+							<div class="w-5 h-5 rounded-full bg-orange-500 animate-pulse"></div>
+							<span class="text-orange-400 font-bold text-lg">CLASSICAL: TWO BANDS</span>
 						</div>
-						<span class="text-gray-200">Two-band pattern — Particles behave classically, no interference</span>
+						<span class="text-gray-200">Detector measuring which slit → wave function collapses → particles land in 2 tight orange clusters at slit positions</span>
 					{:else}
-						<div class="flex items-center gap-2 mb-1">
-							<div class="w-4 h-4 rounded-full bg-cyan-500"></div>
-							<span class="text-cyan-400 font-bold">DETECTOR OFF</span>
+						<div class="flex items-center gap-2 mb-2">
+							<div class="w-5 h-5 rounded-full bg-cyan-500 animate-pulse"></div>
+							<span class="text-cyan-400 font-bold text-lg">QUANTUM: MANY BANDS</span>
 						</div>
-						<span class="text-gray-200">Interference pattern — Multiple bands from quantum wave behavior</span>
+						<span class="text-gray-200">No measurement → superposition → particles create cyan interference fringes spread across entire screen</span>
 					{/if}
 				</div>
 			</div>
@@ -142,9 +227,14 @@
 		bind:particleType
 		bind:detectorOn
 		bind:particleRate
+		bind:showWaves
+		bind:showExpectedPattern
+		bind:showHistogram
 		{isRunning}
+		{isFastForwarding}
 		on:reset={handleReset}
 		on:start={handleStart}
+		on:fastforward={handleFastForward}
 	/>
 
 	<div class="mt-6 p-4 bg-gray-900/50 rounded-lg border border-gray-800">

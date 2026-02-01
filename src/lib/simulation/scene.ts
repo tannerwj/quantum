@@ -53,12 +53,15 @@ export function initScene(canvas: HTMLCanvasElement) {
 	// Add detector screen (right side)
 	const screen = createDetectorScreen(scene);
 
+	// Add measurement detector camera (initially hidden)
+	const detectorCamera = createMeasurementDetector(scene);
+
 	// Add grid floor for depth perception
 	const gridHelper = new THREE.GridHelper(30, 30, 0x00d9ff, 0x333333);
 	gridHelper.position.y = -5;
 	scene.add(gridHelper);
 
-	return { scene, camera, renderer, barrier, slitMarkers, screen };
+	return { scene, camera, renderer, barrier, slitMarkers, screen, detectorCamera };
 }
 
 function createBarrier(scene: THREE.Scene) {
@@ -158,6 +161,60 @@ function createDetectorScreen(scene: THREE.Scene) {
 	return screen;
 }
 
+function createMeasurementDetector(scene: THREE.Scene) {
+	const detectorGroup = new THREE.Group();
+
+	// Camera body - built with front facing +Z (so lookAt works)
+	const bodyGeometry = new THREE.BoxGeometry(0.6, 0.6, 0.8);
+	const bodyMaterial = new THREE.MeshStandardMaterial({
+		color: 0xff6600,
+		metalness: 0.8,
+		roughness: 0.2,
+		emissive: 0xff3300,
+		emissiveIntensity: 0.4
+	});
+	const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+	detectorGroup.add(body);
+
+	// Camera lens - pointing along +Z (forward)
+	const lensGeometry = new THREE.CylinderGeometry(0.3, 0.3, 0.4, 16);
+	const lensMaterial = new THREE.MeshStandardMaterial({
+		color: 0x111111,
+		metalness: 0.9,
+		roughness: 0.1,
+		emissive: 0xff0000,
+		emissiveIntensity: 0.3
+	});
+	const lens = new THREE.Mesh(lensGeometry, lensMaterial);
+	lens.rotation.x = Math.PI / 2; // Rotate to point along Z
+	lens.position.z = 0.5; // Front of camera
+	detectorGroup.add(lens);
+
+	// Laser beam cone - big end toward slits
+	const beamGeometry = new THREE.ConeGeometry(1.0, 4, 8, 1, true);
+	const beamMaterial = new THREE.MeshBasicMaterial({
+		color: 0xff0000,
+		transparent: true,
+		opacity: 0.2,
+		side: THREE.DoubleSide
+	});
+	const beam = new THREE.Mesh(beamGeometry, beamMaterial);
+	beam.rotation.x = -Math.PI / 2; // Flip cone so wide end faces +Z (toward slits)
+	beam.position.z = 2.7;
+	detectorGroup.add(beam);
+
+	// Position detector: left side of emitter/slits (negative Z side)
+	detectorGroup.position.set(-5, 2.5, -3);
+
+	// Point the camera at the slits (0, 0, 0)
+	detectorGroup.lookAt(0, 0, 0);
+
+	detectorGroup.visible = false;
+
+	scene.add(detectorGroup);
+	return detectorGroup;
+}
+
 export function updateSlitPositions(
 	slitMarkers: THREE.Mesh[],
 	slitSpacing: number,
@@ -173,4 +230,8 @@ export function updateSlitPositions(
 	// Bottom slit
 	slitMarkers[1].position.y = -(halfSpacing + halfWidth);
 	slitMarkers[1].scale.y = Math.max(0.3, slitWidth);
+}
+
+export function updateDetectorVisibility(detectorCamera: THREE.Group, visible: boolean) {
+	detectorCamera.visible = visible;
 }

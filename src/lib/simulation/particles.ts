@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { samplePosition, getWavelength } from './physics';
 
+type RenderMode = 'point' | 'wavepacket';
+
 interface Particle {
 	mesh: THREE.Mesh;
 	trail: THREE.Line | null;
@@ -9,6 +11,15 @@ interface Particle {
 	age: number;
 	finalY: number | null;
 	whichSlit: number | null; // 1 for top, -1 for bottom, null for not yet determined
+	renderMode: RenderMode;
+	wavePacketMeshes: THREE.Mesh[]; // Additional meshes for wave packet visualization
+	collapsed: boolean; // Whether the wave packet has collapsed
+}
+
+interface WhichWayLabel {
+	sprite: THREE.Sprite;
+	createdAt: number;
+	fadeStartTime: number;
 }
 
 export class ParticleSystem {
@@ -25,13 +36,19 @@ export class ParticleSystem {
 	private emissionCounter = 0;
 	private maxParticles = 3000;
 	private screenDistance = 8;
-	private maxActiveParticles = 50;
 	private slitIndicators: THREE.Mesh[] = []; // Visual feedback for which slit
+	private whichWayLabels: WhichWayLabel[] = [];
+	private hitCallbacks: ((y: number) => void)[] = [];
 
 	constructor(scene: THREE.Scene) {
 		this.scene = scene;
 		this.createHitDetector();
 		this.createSlitIndicators();
+	}
+
+	// Register a callback to be called when a particle hits the screen
+	onHit(callback: (y: number) => void) {
+		this.hitCallbacks.push(callback);
 	}
 
 	private createSlitIndicators() {
@@ -98,7 +115,106 @@ export class ParticleSystem {
 
 	setEmissionRate(rate: number) {
 		this.emissionRate = rate;
-		console.log('Emission rate updated to:', rate);
+		console.log('Emission rate changed to:', rate, 'particles/second');
+	}
+
+	private shouldUseWavePacket(): boolean {
+		return this.emissionRate <= 3;
+	}
+
+	private createWavePacketMeshes(position: THREE.Vector3, color: number): THREE.Mesh[] {
+		const meshes: THREE.Mesh[] = [];
+		const numLayers = 5;
+
+		for (let i = 0; i < numLayers; i++) {
+			const scale = 1 + i * 0.4;
+			const opacity = 0.3 - i * 0.05;
+
+			const geometry = new THREE.SphereGeometry(0.15 * scale, 12, 12);
+			const material = new THREE.MeshBasicMaterial({
+				color,
+				transparent: true,
+				opacity: Math.max(0.05, opacity),
+				depthWrite: false
+			});
+
+			const mesh = new THREE.Mesh(geometry, material);
+			mesh.position.copy(position);
+			this.scene.add(mesh);
+			meshes.push(mesh);
+		}
+
+		return meshes;
+	}
+
+	private collapseWavePacket(particle: Particle) {
+		if (particle.collapsed) return;
+		particle.collapsed = true;
+
+		// Animate collapse: shrink wave packet meshes to point
+		particle.wavePacketMeshes.forEach((mesh, i) => {
+			// Quick collapse animation
+			const material = mesh.material as THREE.MeshBasicMaterial;
+			material.opacity = 0;
+		});
+	}
+
+	private createWhichWayLabel(slitIndex: number, position: THREE.Vector3) {
+		const canvas = document.createElement('canvas');
+		const context = canvas.getContext('2d')!;
+		canvas.width = 256;
+		canvas.height = 64;
+
+		// Draw label text
+		context.fillStyle = '#ff8800';
+		context.font = 'bold 32px Arial';
+		context.textAlign = 'center';
+		context.textBaseline = 'middle';
+		context.fillText(slitIndex === 0 ? 'Slit 1' : 'Slit 2', 128, 32);
+
+		const texture = new THREE.CanvasTexture(canvas);
+		const material = new THREE.SpriteMaterial({
+			map: texture,
+			transparent: true,
+			opacity: 1
+		});
+
+		const sprite = new THREE.Sprite(material);
+		sprite.position.copy(position);
+		sprite.position.x += 0.5;
+		sprite.position.z = slitIndex === 0 ? 1 : -1;
+		sprite.scale.set(1.5, 0.4, 1);
+
+		this.scene.add(sprite);
+
+		const now = performance.now();
+		this.whichWayLabels.push({
+			sprite,
+			createdAt: now,
+			fadeStartTime: now + 500 // Start fading after 500ms
+		});
+	}
+
+	private updateWhichWayLabels() {
+		const now = performance.now();
+		const fadeDuration = 500; // 500ms fade
+
+		for (let i = this.whichWayLabels.length - 1; i >= 0; i--) {
+			const label = this.whichWayLabels[i];
+			const age = now - label.createdAt;
+
+			if (age > 1000) {
+				// Remove after 1 second
+				this.scene.remove(label.sprite);
+				(label.sprite.material as THREE.SpriteMaterial).dispose();
+				this.whichWayLabels.splice(i, 1);
+			} else if (now > label.fadeStartTime) {
+				// Fade out
+				const fadeProgress = (now - label.fadeStartTime) / fadeDuration;
+				const opacity = 1 - Math.min(1, fadeProgress);
+				(label.sprite.material as THREE.SpriteMaterial).opacity = opacity;
+			}
+		}
 	}
 
 	private getParticleProperties() {
@@ -130,6 +246,7 @@ export class ParticleSystem {
 
 	private createParticle(): Particle {
 		const props = this.getParticleProperties();
+		const useWavePacket = this.shouldUseWavePacket();
 
 		const geometry = new THREE.SphereGeometry(props.size, 8, 8);
 		const material = new THREE.MeshStandardMaterial({
@@ -137,7 +254,7 @@ export class ParticleSystem {
 			emissive: props.color,
 			emissiveIntensity: 0.6,
 			transparent: true,
-			opacity: 0.9
+			opacity: useWavePacket ? 0.5 : 0.9
 		});
 
 		const mesh = new THREE.Mesh(geometry, material);
@@ -148,6 +265,11 @@ export class ParticleSystem {
 		mesh.position.y = randomY;
 
 		this.scene.add(mesh);
+
+		// Create wave packet meshes if in wave packet mode
+		const wavePacketMeshes = useWavePacket
+			? this.createWavePacketMeshes(mesh.position, props.color)
+			: [];
 
 		// Create trail
 		const trailGeometry = new THREE.BufferGeometry();
@@ -167,7 +289,10 @@ export class ParticleSystem {
 			velocity: new THREE.Vector3(props.speed, 0, 0),
 			age: 0,
 			finalY: null,
-			whichSlit: null
+			whichSlit: null,
+			renderMode: useWavePacket ? 'wavepacket' : 'point',
+			wavePacketMeshes,
+			collapsed: false
 		};
 	}
 
@@ -178,12 +303,23 @@ export class ParticleSystem {
 			material.opacity *= 0.92; // Fade out
 		});
 
-		// Emit new particles
+		// Update which-way labels
+		this.updateWhichWayLabels();
+
+		// Emit new particles based on rate
+		// At 60 FPS: 1/s = 0.0167 per frame, 50/s = 0.833 per frame
 		this.emissionCounter += this.emissionRate / 60;
 
-		while (this.emissionCounter >= 1 && this.particles.length < this.maxActiveParticles) {
+		let emittedThisFrame = 0;
+		while (this.emissionCounter >= 1) {
 			this.particles.push(this.createParticle());
 			this.emissionCounter -= 1;
+			emittedThisFrame++;
+		}
+
+		// Debug log every 60 frames (once per second)
+		if (Math.random() < 0.016) {
+			console.log(`Active particles: ${this.particles.length}, Rate: ${this.emissionRate}/s, Just emitted: ${emittedThisFrame}`);
 		}
 
 		// Update existing particles
@@ -215,6 +351,7 @@ export class ParticleSystem {
 					// Hit the barrier, remove particle
 					this.scene.remove(particle.mesh);
 					if (particle.trail) this.scene.remove(particle.trail);
+					particle.wavePacketMeshes.forEach(m => this.scene.remove(m));
 					this.particles.splice(i, 1);
 					continue;
 				}
@@ -223,6 +360,12 @@ export class ParticleSystem {
 				particle.whichSlit = whichSlit;
 				if (detectorOn) {
 					this.flashSlit(whichSlit);
+					// Show which-way label
+					this.createWhichWayLabel(whichSlit, particle.mesh.position.clone());
+					// Collapse wave packet when measured
+					if (particle.renderMode === 'wavepacket') {
+						this.collapseWavePacket(particle);
+					}
 				}
 
 				// Passed through slit - determine final position
@@ -238,6 +381,17 @@ export class ParticleSystem {
 
 			// Move particle
 			particle.mesh.position.add(particle.velocity);
+
+			// Update wave packet meshes to follow particle
+			if (particle.renderMode === 'wavepacket' && !particle.collapsed) {
+				particle.wavePacketMeshes.forEach((mesh, idx) => {
+					mesh.position.copy(particle.mesh.position);
+					// Add slight oscillation for "fuzzy" effect
+					const wobble = Math.sin(particle.age * 0.2 + idx) * 0.05;
+					mesh.position.x += wobble;
+					mesh.position.y += Math.cos(particle.age * 0.15 + idx * 2) * 0.03;
+				});
+			}
 
 			// If we have a target Y position, interpolate towards it
 			if (particle.finalY !== null && particle.mesh.position.x > 0) {
@@ -273,12 +427,26 @@ export class ParticleSystem {
 				const finalY = particle.mesh.position.y;
 				this.addHit(this.screenDistance, finalY, detectorOn);
 
+				// Notify callbacks (e.g., histogram)
+				this.hitCallbacks.forEach(cb => cb(finalY));
+
 				this.scene.remove(particle.mesh);
 				if (particle.trail) this.scene.remove(particle.trail);
+				particle.wavePacketMeshes.forEach(m => {
+					m.geometry.dispose();
+					(m.material as THREE.Material).dispose();
+					this.scene.remove(m);
+				});
 				this.particles.splice(i, 1);
-			} else if (particle.age > 500) {
+			} else if (particle.age > 200) {
+				// Remove particles that are taking too long (stuck or missed screen)
 				this.scene.remove(particle.mesh);
 				if (particle.trail) this.scene.remove(particle.trail);
+				particle.wavePacketMeshes.forEach(m => {
+					m.geometry.dispose();
+					(m.material as THREE.Material).dispose();
+					this.scene.remove(m);
+				});
 				this.particles.splice(i, 1);
 			}
 		}
@@ -325,8 +493,20 @@ export class ParticleSystem {
 		this.particles.forEach(p => {
 			this.scene.remove(p.mesh);
 			if (p.trail) this.scene.remove(p.trail);
+			p.wavePacketMeshes.forEach(m => {
+				m.geometry.dispose();
+				(m.material as THREE.Material).dispose();
+				this.scene.remove(m);
+			});
 		});
 		this.particles = [];
+
+		// Clean up which-way labels
+		this.whichWayLabels.forEach(label => {
+			this.scene.remove(label.sprite);
+			(label.sprite.material as THREE.SpriteMaterial).dispose();
+		});
+		this.whichWayLabels = [];
 
 		this.hitPositions = [];
 		this.hitColors = [];
